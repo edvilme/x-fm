@@ -6,12 +6,17 @@ from urllib import parse
 import urllib.error
 import json
 import tweepy
+from flask import session
 
 app = Flask(__name__)
 
 app.debug = False
 
 app.config.from_pyfile('config.cfg', silent=True)
+
+# Load the environment variables
+from dotenv import load_dotenv
+load_dotenv(".env")
 
 oauth2_user_handler = tweepy.OAuth2UserHandler(
     client_id = os.getenv('CLIENT_ID'),
@@ -24,15 +29,23 @@ authorize_url = (oauth2_user_handler.get_authorization_url())
 
 state = parse.parse_qs(parse.urlparse(authorize_url).query)['state'][0]
 
+# Create a decorator to check if the user is logged in, if not redirect to the login page
+def login_required(f):
+    def decorated_function(*args, **kwargs):
+        if 'user_token' not in session and os.getenv('TEST_USER_TOKEN') is None:
+            return render_template('login.html', authorize_url=authorize_url)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.route('/')
-def hello():
-    return render_template('index.html')
-
-
-@app.route('/start')
-def start():
-    return render_template('start.html', authorize_url=authorize_url)
-
+@login_required
+def index():
+    access_token = session.get('user_token', os.getenv('TEST_USER_TOKEN'))
+    client = tweepy.Client(access_token)
+    user = client.get_me(user_auth=False, user_fields=['public_metrics'], tweet_fields=['author_id'])
+    # Return user's name and handle as json
+    return json.dumps({'name': user.data['name'], 'handle': user.data['username']})
 
 @app.route('/callback')
 def callback():
@@ -56,17 +69,8 @@ def callback():
     print(access_token)
     client = tweepy.Client(access_token)
     user = client.get_me(user_auth=False, user_fields=['public_metrics'], tweet_fields=['author_id'])
-    print(user)
-
-    name = user.data['name']
-    user_name = user.data['username']
-    followers_count = user.data['public_metrics']['followers_count']
-    friends_count = user.data['public_metrics']['following_count']
-    tweet_count = user.data['public_metrics']['tweet_count']
     
-    return render_template('callback-success.html', name=name, user_name=user_name,
-                           friends_count=friends_count, tweet_count=tweet_count, followers_count=followers_count)
-
+    return "Logged in!"
 
 @app.errorhandler(500)
 def internal_server_error(e):
