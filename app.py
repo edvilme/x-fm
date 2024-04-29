@@ -66,10 +66,7 @@ def callback():
     redirect_uri = os.getenv('REDIRECT_URI')
     response_url_from_app = '{}?state={}&code={}'.format(redirect_uri, state, code)
     access_token = oauth2_user_handler.fetch_token(response_url_from_app)['access_token']
-    print(access_token)
-    client = tweepy.Client(access_token)
-    user = client.get_me(user_auth=False, user_fields=['public_metrics'], tweet_fields=['author_id'])
-    
+    print(access_token)    
     return "Logged in!"
 
 @app.errorhandler(500)
