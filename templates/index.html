@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block containercontent %}
+<p class="lead">Welcome to the oauth-sample-v2. This app will show a basic demo of the 'Sign in with Twitter' experience using OAuth 2.0</p>
+<div class="hero-unit">
+	<p>To get started, we'll need you to authorize oauth-sample-v2  to access your Twitter account. Learn more information about <a href="https://developer.twitter.com/en/docs/authentication/oauth-2-0">OAuth 2.0</a></p>
+	<p>Here's our plan:</p>
+	<ol>
+		<li>We will redirect you to Twitter.com for you to authorize our app.</li>
+		<li>While at Twitter.com, you will authorize oauth-sample-v2  and you'll then be redirected back to us.</li>
+		<li>When authorized succesfully, we'll make an authenticated call to the Twitter API to get some
+			information about the user who authorized the app, to show we are able to retrieve this data on your behalf.</li>
+	</ol>
+</div>
+<p>Ready to give this a shot?</p>
+<a href="/start" class="btn btn-small btn-success">Let's Begin</a>
+{% endblock %}
