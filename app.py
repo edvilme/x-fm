@@ -37,18 +37,25 @@ def login_required(f):
         try:
             return f(*args, **kwargs)
         except tweepy.Unauthorized as e:
-            print(e)
-            return render_template('login.html', authorize_url=authorize_url)
+            raise e
     return decorated_function
 
 @app.route('/')
 @login_required
 def index():
     access_token = session.get('user_token', os.getenv('TEST_USER_TOKEN'))
-    client = tweepy.Client(access_token)
-    user = client.get_me(user_auth=False, user_fields=['public_metrics'], tweet_fields=['author_id'])
-    # Return user's name and handle as json
-    return json.dumps({'name': user.data['name'], 'handle': user.data['username']})
+    access_token_secret = session.get('user_token_secret', os.getenv('TEST_USER_TOKEN_SECRET'))
+    print(access_token)
+    # Get client with bearer token from environment variable
+    client = tweepy.Client(
+        consumer_key=os.getenv('API_KEY'),
+        consumer_secret=os.getenv('API_SECRET'),
+        access_token=access_token
+    )
+    # Get the user's name and handle
+    tweets = client.get_home_timeline(user_auth=False)
+    return json.dumps(tweets.data)
+
 
 @app.route('/callback')
 def callback():
@@ -68,10 +75,9 @@ def callback():
     
     redirect_uri = os.getenv('REDIRECT_URI')
     response_url_from_app = '{}?state={}&code={}'.format(redirect_uri, state, code)
-    access_token = oauth2_user_handler.fetch_token(response_url_from_app)['access_token']
-    session['user_token'] = access_token
+    token = oauth2_user_handler.fetch_token(response_url_from_app)
     # Redirect to the index page
-    return redirect('/')
+    return json.dumps(token)
 
 @app.errorhandler(500)
 def internal_server_error(e):
