@@ -1,65 +1,80 @@
-from flask import Flask, redirect, request, session, url_for
+import json
+from flask import Flask, request, redirect, session, jsonify
 import tweepy
 import os
 
-# Read environment variables
+from gemini_interface import gemini_model, generate_script
+
+app = Flask(__name__)
+
+# Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv('.env')
 
-# Twitter API keys
-consumer_key = os.getenv('API_KEY')
-consumer_secret = os.getenv('API_SECRET')
-callback_url = os.getenv("REDIRECT_URI")  # Update this URL with your callback URL
+# Twitter API credentials
+consumer_key = os.environ.get('API_KEY')
+consumer_secret = os.environ.get('API_SECRET')
 
-# Flask configuration
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+# Flask session secret key
+app.secret_key = "a1b2c3d4e5f6g7h8i9j0"
 
-# Redirect users to Twitter for authorization
+# Tweepy OAuth1UserHandler
+oauth1_user_handler = tweepy.OAuth1UserHandler(
+    consumer_key=os.environ.get('API_KEY'),
+    consumer_secret=os.environ.get('API_SECRET'),
+    callback=os.environ.get('REDIRECT_URI')
+)
+
+# Decorator to check if user is authenticated
+def require_authentication(f):
+    def wrapper(*args, **kwargs):
+        access_token = session.get('access_token')
+        if not access_token:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return wrapper
+
 @app.route('/')
-def home():
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret, callback_url)
-    try:
-        redirect_url = auth.get_authorization_url()
-        session['request_token'] = auth.request_token
-        return redirect(redirect_url)
-    except tweepy.TweepError as e:
-        print(e)
+def index():
+    return 'Welcome to the Flask-Tweepy OAuth example!'
 
-# Callback route after authorization
+@app.route('/login')
+def login():
+    redirect_url = oauth1_user_handler.get_authorization_url()
+    print(redirect_url)
+    return redirect(redirect_url)
+
 @app.route('/callback')
 def callback():
-    verifier = request.args.get('oauth_verifier')
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-    request_token = session['request_token']
-    del session['request_token']
+    oauth_verifier = request.args.get('oauth_verifier')
+    oauth1_user_handler.get_access_token(oauth_verifier)
+    access_token = oauth1_user_handler.access_token
+    access_token_secret = oauth1_user_handler.access_token_secret
+    session['access_token'] = (access_token, access_token_secret)
+    return redirect('/timeline')
 
-    auth.request_token = request_token
+@app.route('/timeline')
+@require_authentication
+def timeline():
+    access_token = session.get('access_token')
+    oauth1_user_handler.set_access_token(*access_token)
 
-    try:
-        auth.get_access_token(verifier)
-        session['access_token'] = auth.access_token
-        session['access_token_secret'] = auth.access_token_secret
-        return redirect(url_for('profile'))
-    except tweepy.TweepError as e:
-        print(e)
-
-# Profile route to display user info
-@app.route('/profile')
-def profile():
-    access_token = session['access_token']
-    access_token_secret = session['access_token_secret']
-
-    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-    auth.set_access_token(access_token, access_token_secret)
-
-    # Authenticate as the user
     client = tweepy.Client(
-        consumer_key=auth.consumer_key, 
-        consumer_secret=auth.consumer_secret,
-        access_token=auth.access_token,
-        access_token_secret=auth.access_token_secret
+        consumer_key=os.environ.get('API_KEY'),
+        consumer_secret=os.environ.get('API_SECRET'),
+        access_token=access_token[0],
+        access_token_secret=access_token[1],
+        wait_on_rate_limit=True
     )
+    tweets = client.get_home_timeline()
+    print(tweets.data)
+    return json.dumps(tweets.data)
+
+
+    return "Done"
+
+    
+
 
 if __name__ == '__main__':
     app.run(debug=True)
