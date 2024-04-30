@@ -1,6 +1,6 @@
 from io import BytesIO
 import json
-from flask import Flask, request, redirect, send_file, session, jsonify
+from flask import Flask, Response, request, redirect, send_file, session, jsonify
 import tweepy
 import os
 from gtts import gTTS
@@ -79,9 +79,8 @@ def timeline():
     print("Generating speech")
     speech_bytes = BytesIO() 
     tts = gTTS(text=script, lang='en')
-    tts.write_to_fp(speech_bytes)
-    # Return speech
-    return send_file(speech_bytes, mimetype='audio/mp3')
+    
+    return Response(tts.stream(), mimetype='audio/mpeg')
 
 
     
