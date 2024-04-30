@@ -1,7 +1,9 @@
+from io import BytesIO
 import json
-from flask import Flask, request, redirect, session, jsonify
+from flask import Flask, request, redirect, send_file, session, jsonify
 import tweepy
 import os
+from gtts import gTTS
 
 from gemini_interface import gemini_model, generate_script
 
@@ -66,12 +68,21 @@ def timeline():
         access_token_secret=access_token[1],
         wait_on_rate_limit=True
     )
-    tweets = client.get_home_timeline()
-    print(tweets.data)
-    return json.dumps(tweets.data)
+    # Get tweets
+    print("Getting tweets")
+    tweets_raw = client.get_home_timeline()
+    tweets = [tweet.data for tweet in tweets_raw.data]
+    # Generate script
+    print("Generating script")
+    script = generate_script(tweets)
+    # Generate speech
+    print("Generating speech")
+    speech_bytes = BytesIO() 
+    tts = gTTS(text=script, lang='en')
+    tts.write_to_fp(speech_bytes)
+    # Return speech
+    return send_file(speech_bytes, mimetype='audio/mp3')
 
-
-    return "Done"
 
     
 
