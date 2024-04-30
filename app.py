@@ -1,88 +1,65 @@
-import os
-from flask import Flask, redirect, render_template, request, url_for
-import oauth2 as oauth
-import urllib.request
-from urllib import parse
-import urllib.error
-import json
+from flask import Flask, redirect, request, session, url_for
 import tweepy
-from flask import session
+import os
 
-app = Flask(__name__)
-
-app.debug = False
-
-app.config.from_pyfile('config.cfg', silent=True)
-
-# Load the environment variables
+# Read environment variables
 from dotenv import load_dotenv
-load_dotenv(".env")
+load_dotenv('.env')
 
-oauth2_user_handler = tweepy.OAuth2UserHandler(
-    client_id = os.getenv('CLIENT_ID'),
-    redirect_uri = os.getenv('REDIRECT_URI'),
-    scope = ["tweet.read", "users.read", "list.read"],
-    # Client Secret is only necessary if using a confidential client
-    client_secret = os.getenv('CLIENT_SECRET'))
+# Twitter API keys
+consumer_key = os.getenv('API_KEY')
+consumer_secret = os.getenv('API_SECRET')
+callback_url = os.getenv("REDIRECT_URI")  # Update this URL with your callback URL
 
-authorize_url = (oauth2_user_handler.get_authorization_url())
+# Flask configuration
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'
 
-state = parse.parse_qs(parse.urlparse(authorize_url).query)['state'][0]
-
-# Create a decorator to check if the user is logged in, if not redirect to the login page
-def login_required(f):
-    def decorated_function(*args, **kwargs):
-        if 'user_token' not in session and os.getenv('TEST_USER_TOKEN') is None:
-            return render_template('login.html', authorize_url=authorize_url)
-        try:
-            return f(*args, **kwargs)
-        except tweepy.Unauthorized as e:
-            raise e
-    return decorated_function
-
+# Redirect users to Twitter for authorization
 @app.route('/')
-@login_required
-def index():
-    access_token = session.get('user_token', os.getenv('TEST_USER_TOKEN'))
-    access_token_secret = session.get('user_token_secret', os.getenv('TEST_USER_TOKEN_SECRET'))
-    print(access_token)
-    # Get client with bearer token from environment variable
-    client = tweepy.Client(
-        consumer_key=os.getenv('API_KEY'),
-        consumer_secret=os.getenv('API_SECRET'),
-        access_token=access_token
-    )
-    # Get the user's name and handle
-    tweets = client.get_home_timeline(user_auth=False)
-    return json.dumps(tweets.data)
+def home():
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret, callback_url)
+    try:
+        redirect_url = auth.get_authorization_url()
+        session['request_token'] = auth.request_token
+        return redirect(redirect_url)
+    except tweepy.TweepError as e:
+        print(e)
 
-
+# Callback route after authorization
 @app.route('/callback')
 def callback():
-    # Accept the callback params, get the token and call the API to
-    # display the logged-in user's name and handle
-    received_state = request.args.get('state')
-    code = request.args.get('code')
-    access_denied = request.args.get('error')
+    verifier = request.args.get('oauth_verifier')
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    request_token = session['request_token']
+    del session['request_token']
 
-    # if the OAuth request was denied, delete our local token
-    # and show an error message
-    if access_denied:
-        return render_template('error.html', error_message="the OAuth request was denied by this user")
-      
-    if received_state != state:
-      return render_template('error.html', error_message="There was a problem authenticating this user")
-    
-    redirect_uri = os.getenv('REDIRECT_URI')
-    response_url_from_app = '{}?state={}&code={}'.format(redirect_uri, state, code)
-    token = oauth2_user_handler.fetch_token(response_url_from_app)
-    # Redirect to the index page
-    return json.dumps(token)
+    auth.request_token = request_token
 
-@app.errorhandler(500)
-def internal_server_error(e):
-    return render_template('error.html', error_message='uncaught exception'), 500
+    try:
+        auth.get_access_token(verifier)
+        session['access_token'] = auth.access_token
+        session['access_token_secret'] = auth.access_token_secret
+        return redirect(url_for('profile'))
+    except tweepy.TweepError as e:
+        print(e)
 
-  
+# Profile route to display user info
+@app.route('/profile')
+def profile():
+    access_token = session['access_token']
+    access_token_secret = session['access_token_secret']
+
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_token, access_token_secret)
+
+    # Authenticate as the user
+    client = tweepy.Client(
+        consumer_key=auth.consumer_key, 
+        consumer_secret=auth.consumer_secret,
+        access_token=auth.access_token,
+        access_token_secret=auth.access_token_secret
+    )
+
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
