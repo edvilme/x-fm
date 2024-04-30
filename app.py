@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, url_for
 import oauth2 as oauth
 import urllib.request
 from urllib import parse
@@ -34,9 +34,12 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'user_token' not in session and os.getenv('TEST_USER_TOKEN') is None:
             return render_template('login.html', authorize_url=authorize_url)
-        return f(*args, **kwargs)
+        try:
+            return f(*args, **kwargs)
+        except tweepy.Unauthorized as e:
+            print(e)
+            return render_template('login.html', authorize_url=authorize_url)
     return decorated_function
-
 
 @app.route('/')
 @login_required
@@ -66,8 +69,9 @@ def callback():
     redirect_uri = os.getenv('REDIRECT_URI')
     response_url_from_app = '{}?state={}&code={}'.format(redirect_uri, state, code)
     access_token = oauth2_user_handler.fetch_token(response_url_from_app)['access_token']
-    print(access_token)    
-    return "Logged in!"
+    session['user_token'] = access_token
+    # Redirect to the index page
+    return redirect('/')
 
 @app.errorhandler(500)
 def internal_server_error(e):
