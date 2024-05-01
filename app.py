@@ -1,24 +1,20 @@
-from io import BytesIO
-import json
-from flask import Flask, Response, request, redirect, send_file, session, jsonify
+from flask import Flask, request, redirect, session
+from flask_caching import Cache
 import tweepy
 import os
 from gtts import gTTS
+from dotenv import load_dotenv
+from functools import wraps
 
-from gemini_interface import gemini_model, generate_script
-
-app = Flask(__name__)
+from gemini_interface import generate_script
 
 # Load environment variables from .env file
-from dotenv import load_dotenv
 load_dotenv('.env')
 
-# Twitter API credentials
-consumer_key = os.environ.get('API_KEY')
-consumer_secret = os.environ.get('API_SECRET')
-
-# Flask session secret key
+# Flask app
+app = Flask(__name__)
 app.secret_key = "a1b2c3d4e5f6g7h8i9j0"
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Tweepy OAuth1UserHandler
 oauth1_user_handler = tweepy.OAuth1UserHandler(
@@ -36,9 +32,43 @@ def require_authentication(f):
         return f(*args, **kwargs)
     return wrapper
 
+# Decorator to cache response based on session access token
+def cache_response(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Generate cache key based on session user token
+        cache_key = f"{session.get('user_token')}-{request.path}"
+        # Check if response is cached
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return cached_response
+        # If response is not cached, call the view function and cache the response
+        response = f(*args, **kwargs)
+        cache.set(cache_key, response, timeout=60*5)  # Cache for 60 seconds
+        return response
+    return decorated_function
+
 @app.route('/')
-def index():
-    return 'Welcome to the Flask-Tweepy OAuth example!'
+@require_authentication
+@cache_response
+def timeline():
+    access_token = session.get('access_token')
+    oauth1_user_handler.set_access_token(*access_token)
+
+    client = tweepy.Client(
+        consumer_key=os.environ.get('API_KEY'),
+        consumer_secret=os.environ.get('API_SECRET'),
+        access_token=access_token[0],
+        access_token_secret=access_token[1],
+        wait_on_rate_limit=True
+    )
+    # Get tweets
+    tweets_raw = client.get_home_timeline()
+    tweets = [tweet.data for tweet in tweets_raw.data]
+    # Generate script
+    script = generate_script(tweets)
+    return script
+
 
 @app.route('/login')
 def login():
@@ -54,39 +84,6 @@ def callback():
     access_token_secret = oauth1_user_handler.access_token_secret
     session['access_token'] = (access_token, access_token_secret)
     return redirect('/timeline')
-
-@app.route('/timeline')
-@require_authentication
-def timeline():
-    access_token = session.get('access_token')
-    oauth1_user_handler.set_access_token(*access_token)
-
-    client = tweepy.Client(
-        consumer_key=os.environ.get('API_KEY'),
-        consumer_secret=os.environ.get('API_SECRET'),
-        access_token=access_token[0],
-        access_token_secret=access_token[1],
-        wait_on_rate_limit=True
-    )
-    # Get tweets
-    print("Getting tweets")
-    tweets_raw = client.get_home_timeline()
-    tweets = [tweet.data for tweet in tweets_raw.data]
-    # Generate script
-    print("Generating script")
-    script = generate_script(tweets)
-    return script
-    # print(script)
-    # # Generate speech
-    # print("Generating speech")
-    # speech_bytes = BytesIO() 
-    # tts = gTTS(text=script, lang='en')
-    
-    # return Response(tts.stream(), mimetype='audio/mpeg')
-
-
-    
-
 
 if __name__ == '__main__':
     app.run(debug=True)
