@@ -1,4 +1,5 @@
-from flask import Flask, request, redirect, session
+import io
+from flask import Flask, Response, request, redirect, session
 from flask_caching import Cache
 import tweepy
 import os
@@ -67,7 +68,20 @@ def timeline():
     tweets = [tweet.data for tweet in tweets_raw.data]
     # Generate script
     script = generate_script(tweets)
-    return script
+    print(script)
+    # Generate the audio
+    tts = gTTS(text=script, lang='en')
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+        
+    # Set headers for audio streaming
+    headers = {
+        'Content-Type': 'audio/mpeg',
+        'Content-Disposition': 'inline; filename=output.mp3'
+    }
+    
+    return Response(mp3_fp, headers=headers, status=200)
 
 
 @app.route('/login')
