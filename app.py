@@ -75,12 +75,14 @@ def timeline():
     # Generate script
     print("Generating script")
     script = generate_script(tweets)
-    # Generate speech
-    print("Generating speech")
-    speech_bytes = BytesIO() 
-    tts = gTTS(text=script, lang='en')
+    return script
+    # print(script)
+    # # Generate speech
+    # print("Generating speech")
+    # speech_bytes = BytesIO() 
+    # tts = gTTS(text=script, lang='en')
     
-    return Response(tts.stream(), mimetype='audio/mpeg')
+    # return Response(tts.stream(), mimetype='audio/mpeg')
 
 
     
